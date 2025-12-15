@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>유리함수 고정점 & 연속합성 시각화 (수렴 고정점 기준 확대)</title>
+  <title>유리함수 고정점 & 연속합성 시각화</title>
   <style>
     :root {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -204,7 +204,6 @@
       <div class="sub">
         f(x) = (a x + b) / (c x + d) 계수를 넣고<br/>
         y = x, y = f(x), 고정점과 반복합성 궤적을 시각화합니다.<br/>
-        고정점이 두 개이면, 수렴하는 고정점만 기준으로 확대합니다.
       </div>
 
       <h2 style="font-size:0.95rem;margin:0 0 6px;">1. 계수 입력</h2>
@@ -253,7 +252,7 @@
           </label>
           <label>
             <span style="font-size:0.75rem;color:#6b7280;">
-              ※ 전체 궤적을 한 번 보고, 수렴하는 고정점 주변으로 부드럽게 확대합니다.
+             
             </span>
           </label>
         </div>
@@ -715,7 +714,7 @@
 
       warningDisplay.textContent = '';
       if (Math.abs(a * d - b * c) < 1e-10) {
-        warningDisplay.textContent = '주의: ad - bc = 0 에 가까워, 특이한 형태의 유리함수일 수 있습니다.';
+        warningDisplay.textContent = '';
       }
 
       if (!fixedResult) {
@@ -805,7 +804,7 @@
       stopIteration();
       setDefaultRange();
       redrawAll();
-      iterStatus.textContent = '그래프를 새로 그렸습니다. (기본 범위 -5 ~ 5)';
+      iterStatus.textContent = '그래프를 새로 그렸습니다.';
     });
 
     resetBtn.addEventListener('click', () => {
@@ -841,7 +840,7 @@
         drawStartPoint(x0);
       }, fixedResult);
 
-      iterStatus.textContent = `x₀ = ${x0} 위치와 고정점을 중심으로 보이도록 맞췄습니다.`;
+      iterStatus.textContent = `x₀ = ${x0} `;
     });
 
     startIterBtn.addEventListener('click', () => {
@@ -916,7 +915,7 @@
       startIterBtn.disabled = true;
       stopIterBtn.disabled = false;
       iterStatus.textContent =
-        '전체 궤적을 한 번 보고, 수렴하는 고정점 기준으로 부드럽게 확대 중입니다...';
+        '';
 
       requestAnimationFrame(animationLoop);
     });
