@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>유리함수 고정점 시각화</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark light;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .container {
+      display: flex;
+      gap: 24px;
+      padding: 24px;
+      max-width: 1200px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .panel {
+      flex: 0 0 360px;
+      background: #020617;
+      border-radius: 18px;
+      padding: 20px 20px 16px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      box-sizing: border-box;
+    }
+    .panel h1 {
+      font-size: 1.2rem;
+      margin: 0 0 12px;
+    }
+    .sub {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+    .coeff-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin-bottom: 10px;
+    }
+    label {
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    input[type="number"] {
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 0.9rem;
+      box-sizing: border-box;
+    }
+    input[type="number"]:focus {
+      outline: 1px solid #38bdf8;
+      border-color: #38bdf8;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 10px;
+    }
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    button.secondary {
+      background: #111827;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+    }
+    button.danger {
+      background: #ef4444;
+      color: #f9fafb;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .info-box {
+      background: #020617;
+      border-radius: 12px;
+      border: 1px solid #1e293b;
+      padding: 8px 10px;
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+    }
+    .info-box strong {
+      color: #fbbf24;
+    }
+    .info-line {
+      margin: 2px 0;
+    }
+    .iter-section {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px dashed #1f2937;
+    }
+    .iter-section h2 {
+      font-size: 0.98rem;
+      margin: 0 0 6px;
+    }
+    .iter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .status {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      min-height: 2.3em;
+      white-space: pre-line;
+    }
+
+    .canvas-wrapper {
+      flex: 1 1 auto;
+      background: #020617;
+      border-radius: 18px;
+      padding: 14px 14px 12px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 800px;
+    }
+    canvas {
+      border-radius: 14px;
+      background: #020617;
+      border: 1px solid #1e293b;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.8rem;
+      align-items: center;
+      color: #9ca3af;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-right: 8px;
+    }
+    .legend-color {
+      width: 20px;
+      height: 3px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .diag { background: #22c55e; }
+    .func { background: #3b82f6; }
+    .cob { background: #f97316; }
+    .fixed-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid #fbbf24;
+      box-sizing: border-box;
+      display: inline-block;
+    }
+    @media (max-width: 960px) {
+      .container {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .panel {
+        width: 100%;
+      }
+      .canvas-wrapper {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel">
+      <h1>유리함수 고정점 시각화</h1>
+      <div class="sub">
+        f(x) = (a x + b) / (c x + d) 계수를 넣고<br/>
+        y = x, y = f(x), 고정점과 반복합성 궤적을 시각화합니다.<br/>
+      </div>
+
+      <h2 style="font-size:0.95rem;margin:0 0 6px;">1. 계수 입력</h2>
+      <div class="coeff-grid">
+        <label>a
+          <input id="coef-a" type="number" value="1" step="0.1" />
+        </label>
+        <label>b
+          <input id="coef-b" type="number" value="0" step="0.1" />
+        </label>
+        <label>c
+          <input id="coef-c" type="number" value="0" step="0.1" />
+        </label>
+        <label>d
+          <input id="coef-d" type="number" value="1" step="0.1" />
+        </label>
+      </div>
+      <div class="btn-row">
+        <button id="plotBtn">그래프 다시 그리기</button>
+        <button id="resetBtn" class="secondary">계수 초기화</button>
+      </div>
+
+      <div class="info-box">
+        <div class="info-line">
+          <strong>현재 함수</strong>:
+          <span id="fnDisplay"></span>
+        </div>
+        <div class="info-line">
+          <strong>고정점(실수)</strong>:
+          <span id="fixedDisplay"></span>
+        </div>
+        <div class="info-line" id="warningDisplay" style="color:#f97316;"></div>
+      </div>
+
+      <div class="iter-section">
+        <h2>2. 연속합성(반복) 시각화</h2>
+        <div class="iter-grid">
+          <label>x₀ (시작값)
+            <input id="x0" type="number" value="0.5" step="0.1" />
+          </label>
+          <label>반복 횟수
+            <input id="maxIter" type="number" value="30" min="1" max="200" />
+          </label>
+          <label>애니메이션 속도(ms)
+            <input id="speed" type="number" value="300" min="50" />
+          </label>
+          <label>
+            <span style="font-size:0.75rem;color:#6b7280;">
+             </span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button id="markBtn" class="secondary">x₀ 점만 표시</button>
+          <button id="startIterBtn">연속합성 시작</button>
+          <button id="stopIterBtn" class="danger" disabled>정지</button>
+        </div>
+        <div class="status" id="iterStatus"></div>
+      </div>
+    </div>
+
+    <div class="canvas-wrapper">
+      <canvas id="plot" width="640" height="640"></canvas>
+      <div class="legend">
+        <span class="legend-item">
+          <span class="legend-color diag"></span> y = x
+        </span>
+        <span class="legend-item">
+          <span class="legend-color func"></span> y = f(x)
+        </span>
+        <span class="legend-item">
+          <span class="fixed-dot"></span> 고정점
+        </span>
+        <span class="legend-item">
+          <span class="legend-color cob"></span> 반복 궤적
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 캔버스 및 기본 상태 =====
+    const canvas = document.getElementById('plot');
+    const ctx = canvas.getContext('2d');
+
+    let X_MIN = -5, X_MAX = 5;
+    let Y_MIN = -5, Y_MAX = 5;
+    const DEFAULT_RANGE = { xMin: -5, xMax: 5, yMin: -5, yMax: 5 };
+
+    function setDefaultRange() {
+      X_MIN = DEFAULT_RANGE.xMin;
+      X_MAX = DEFAULT_RANGE.xMax;
+      Y_MIN = DEFAULT_RANGE.yMin;
+      Y_MAX = DEFAULT_RANGE.yMax;
+    }
+
+    // DOM
+    const aInput = document.getElementById('coef-a');
+    const bInput = document.getElementById('coef-b');
+    const cInput = document.getElementById('coef-c');
+    const dInput = document.getElementById('coef-d');
+
+    const fnDisplay = document.getElementById('fnDisplay');
+    const fixedDisplay = document.getElementById('fixedDisplay');
+    const warningDisplay = document.getElementById('warningDisplay');
+
+    const x0Input = document.getElementById('x0');
+    const maxIterInput = document.getElementById('maxIter');
+    const speedInput = document.getElementById('speed');
+    const iterStatus = document.getElementById('iterStatus');
+
+    const plotBtn = document.getElementById('plotBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const markBtn = document.getElementById('markBtn');
+    const startIterBtn = document.getElementById('startIterBtn');
+    const stopIterBtn = document.getElementById('stopIterBtn');
+
+    // 반복 애니메이션 상태
+    let iterAnimating = false;
+    let currentCobwebSteps = [];
+    let currentFixedResult = null;
+    let currentX0 = 0;
+    let currentSpeedMs = 300;
+    let animationStartTime = null;
+    let lastFrameTime = null;
+
+    // ===== 유틸 =====
+    function getCoeffs() {
+      const a = parseFloat(aInput.value || '0');
+      const b = parseFloat(bInput.value || '0');
+      const c = parseFloat(cInput.value || '0');
+      const d = parseFloat(dInput.value || '0');
+      return { a, b, c, d };
+    }
+
+    function xToPx(x) {
+      return (x - X_MIN) / (X_MAX - X_MIN) * canvas.width;
+    }
+    function yToPy(y) {
+      return canvas.height - (y - Y_MIN) / (Y_MAX - Y_MIN) * canvas.height;
+    }
+
+    function rational(x, a, b, c, d) {
+      const denom = c * x + d;
+      if (Math.abs(denom) < 1e-8) return null;
+      return (a * x + b) / denom;
+    }
+
+    // ===== 고정점 =====
+    function computeFixedPoints(a, b, c, d) {
+      const eps = 1e-10;
+      const result = { type: 'finite', points: [], message: '' };
+
+      if (Math.abs(c) < eps) {
+        if (Math.abs(d) < eps) {
+          result.type = 'none';
+          result.message = 'c = 0, d = 0 인 경우 정의가 불안정합니다.';
+          return result;
+        }
+        const k = a / d;
+        const m = b / d;
+        const A = k - 1;
+        const B = m;
+        if (Math.abs(A) < eps) {
+          if (Math.abs(B) < eps) {
+            result.type = 'all';
+            result.message = '모든 x 가 고정점 (f(x) = x)';
+          } else {
+            result.type = 'none';
+            result.message = '실수 고정점이 없습니다.';
+          }
+        } else {
+          const x0 = -B / A;
+          result.points.push(x0);
+        }
+        return result;
+      } else {
+        const A = c;
+        const B = d - a;
+        const C = -b;
+        const D = B * B - 4 * A * C;
+        if (D < -eps) {
+          result.type = 'none';
+          result.message = '실수 고정점이 없습니다.';
+          return result;
+        } else if (Math.abs(D) <= eps) {
+          const x0 = -B / (2 * A);
+          result.points.push(x0);
+          return result;
+        } else {
+          const sqrtD = Math.sqrt(D);
+          const x1 = (-B + sqrtD) / (2 * A);
+          const x2 = (-B - sqrtD) / (2 * A);
+          result.points.push(x1, x2);
+          return result;
+        }
+      }
+    }
+
+    // ===== 범위 자동 조정 (연속 줌) =====
+    function updateRangeFromPoints(points, dtSeconds) {
+      let xmin = Infinity, xmax = -Infinity;
+      let ymin = Infinity, ymax = -Infinity;
+
+      for (const p of points) {
+        if (!p) continue;
+        const { x, y } = p;
+        if (!isFinite(x) || !isFinite(y)) continue;
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+      }
+
+      if (xmin === Infinity) {
+        // 포인트가 없으면 기본 범위
+        if (!dtSeconds || dtSeconds <= 0) {
+          setDefaultRange();
+        } else {
+          setDefaultRange();
+        }
+        return;
+      }
+
+      let width = xmax - xmin;
+      let height = ymax - ymin;
+
+      if (width < 1e-3) {
+        width = 1;
+        xmin -= 0.5;
+        xmax += 0.5;
+      }
+      if (height < 1e-3) {
+        height = 1;
+        ymin -= 0.5;
+        ymax += 0.5;
+      }
+
+      const marginX = width * 0.2;
+      const marginY = height * 0.2;
+
+      let targetXMin = xmin - marginX;
+      let targetXMax = xmax + marginX;
+      let targetYMin = ymin - marginY;
+      let targetYMax = ymax + marginY;
+
+      const LIMIT = 1e6;
+      targetXMin = Math.max(targetXMin, -LIMIT);
+      targetXMax = Math.min(targetXMax, LIMIT);
+      targetYMin = Math.max(targetYMin, -LIMIT);
+      targetYMax = Math.min(targetYMax, LIMIT);
+
+      // dtSeconds가 없거나 처음이면 바로 맞춤
+      if (!dtSeconds || dtSeconds <= 0 ||
+          !isFinite(X_MIN) || !isFinite(X_MAX) ||
+          !isFinite(Y_MIN) || !isFinite(Y_MAX)) {
+        X_MIN = targetXMin;
+        X_MAX = targetXMax;
+        Y_MIN = targetYMin;
+        Y_MAX = targetYMax;
+        return;
+      }
+
+      // 부드러운 보간 (연속 줌)
+      const T = 0.7; // 카메라가 목표 범위로 수렴하는 시간 상수(초 단위)
+      const alpha = 1 - Math.exp(-dtSeconds / T); // 0 ~ 1
+
+      const lerp = (oldVal, newVal) => oldVal + alpha * (newVal - oldVal);
+
+      X_MIN = lerp(X_MIN, targetXMin);
+      X_MAX = lerp(X_MAX, targetXMax);
+      Y_MIN = lerp(Y_MIN, targetYMin);
+      Y_MAX = lerp(Y_MAX, targetYMax);
+    }
+
+    function autoRangeForIteration(steps, idx, fixedResult, dtSeconds) {
+      const pts = [];
+      const lastIndex = Math.min(idx, steps.length - 1);
+
+      const maxIter = Math.max(1, parseInt(maxIterInput.value || '30', 10));
+      const windowSize = Math.max(6, Math.floor(maxIter / 3));
+      const firstIndex = Math.max(0, lastIndex - windowSize);
+
+      for (let i = firstIndex; i <= lastIndex; i++) {
+        const s = steps[i];
+        if (!s || s.type !== 'segment') continue;
+        pts.push(s.from, s.to);
+      }
+
+      if (fixedResult && fixedResult.type === 'finite') {
+        for (const fp of fixedResult.points) {
+          pts.push({ x: fp, y: fp });
+        }
+      }
+
+      updateRangeFromPoints(pts, dtSeconds);
+    }
+
+    function autoRangeForSinglePointAndFixed(x0, fixedResult) {
+      const pts = [];
+      if (isFinite(x0)) pts.push({ x: x0, y: x0 });
+      if (fixedResult && fixedResult.type === 'finite') {
+        for (const fp of fixedResult.points) {
+          pts.push({ x: fp, y: fp });
+        }
+      }
+      updateRangeFromPoints(pts, 0); // 즉시 맞추기
+    }
+
+    // ===== 그리기 함수들 =====
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#111827';
+
+      for (let x = Math.ceil(X_MIN); x <= X_MAX; x++) {
+        const px = xToPx(x);
+        ctx.beginPath();
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = Math.ceil(Y_MIN); y <= Y_MAX; y++) {
+        const py = yToPy(y);
+        ctx.beginPath();
+        ctx.moveTo(0, py);
+        ctx.lineTo(canvas.width, py);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = '#4b5563';
+      ctx.lineWidth = 1.4;
+
+      if (X_MIN <= 0 && X_MAX >= 0) {
+        const px0 = xToPx(0);
+        ctx.beginPath();
+        ctx.moveTo(px0, 0);
+        ctx.lineTo(px0, canvas.height);
+        ctx.stroke();
+      }
+
+      if (Y_MIN <= 0 && Y_MAX >= 0) {
+        const py0 = yToPy(0);
+        ctx.beginPath();
+        ctx.moveTo(0, py0);
+        ctx.lineTo(canvas.width, py0);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '11px system-ui';
+      for (let x = Math.ceil(X_MIN); x <= X_MAX; x++) {
+        const px = xToPx(x);
+        const py0 = yToPy(0);
+        ctx.fillText(x.toString(), px + 2, py0 - 2);
+      }
+      for (let y = Math.ceil(Y_MIN); y <= Y_MAX; y++) {
+        const py = yToPy(y);
+        const px0 = xToPx(0);
+        ctx.fillText(y.toString(), px0 + 4, py - 2);
+      }
+    }
+
+    function drawDiagonal() {
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      const x1 = X_MIN;
+      const x2 = X_MAX;
+      ctx.moveTo(xToPx(x1), yToPy(x1));
+      ctx.lineTo(xToPx(x2), yToPy(x2));
+      ctx.stroke();
+    }
+
+    function drawFunction(a, b, c, d) {
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      const steps = 800;
+      let prev = null;
+
+      for (let i = 0; i <= steps; i++) {
+        const x = X_MIN + (X_MAX - X_MIN) * (i / steps);
+        const y = rational(x, a, b, c, d);
+        if (y === null || !isFinite(y) || Math.abs(y) > 1e6) {
+          prev = null;
+          continue;
+        }
+        const px = xToPx(x);
+        const py = yToPy(y);
+
+        if (prev) {
+          if (Math.abs(py - prev.py) < canvas.height * 0.8) {
+            ctx.beginPath();
+            ctx.moveTo(prev.px, prev.py);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+          }
+        }
+        prev = { px, py, x, y };
+      }
+    }
+
+    function drawFixedPoints(fixedResult) {
+      if (!fixedResult || fixedResult.type === 'none' || fixedResult.type === 'all') return;
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 1.5;
+
+      for (const x of fixedResult.points) {
+        const y = x;
+        if (x < X_MIN || x > X_MAX || y < Y_MIN || y > Y_MAX) continue;
+        const px = xToPx(x);
+        const py = yToPy(y);
+
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    function drawStartPoint(x0) {
+      const px = xToPx(x0);
+      const py = yToPy(x0);
+      ctx.fillStyle = '#e11d48';
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ===== 코브웹 =====
+    function buildCobwebSteps(a, b, c, d, x0, maxIter) {
+      const steps = [];
+      let x = x0;
+      const LIMIT = 1e6;
+
+      for (let i = 0; i < maxIter; i++) {
+        const y = rational(x, a, b, c, d);
+        if (y === null || !isFinite(y)) {
+          steps.push({ type: 'break', reason: '정의되지 않는 값 또는 발산' });
+          break;
+        }
+        if (Math.abs(x) > LIMIT || Math.abs(y) > LIMIT) {
+          steps.push({ type: 'break', reason: '값이 너무 크게 발산했습니다.' });
+          break;
+        }
+
+        steps.push({ type: 'segment', from: { x, y: x }, to: { x, y } });
+        steps.push({ type: 'segment', from: { x, y }, to: { x: y, y } });
+        x = y;
+      }
+      return steps;
+    }
+
+    function drawCobweb(steps, uptoIndex) {
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.4;
+
+      for (let i = 0; i <= uptoIndex && i < steps.length; i++) {
+        const s = steps[i];
+        if (s.type !== 'segment') continue;
+        const fromPx = xToPx(s.from.x);
+        const fromPy = yToPy(s.from.y);
+        const toPx = xToPx(s.to.x);
+        const toPy = yToPy(s.to.y);
+
+        ctx.beginPath();
+        ctx.moveTo(fromPx, fromPy);
+        ctx.lineTo(toPx, toPy);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(toPx, toPy, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#f97316';
+        ctx.fill();
+      }
+    }
+
+    // ===== 정보 패널 =====
+    function updateInfoPanel(fixedResult) {
+      const { a, b, c, d } = getCoeffs();
+      const format = (v) => {
+        if (!isFinite(v)) return '∞';
+        return Math.round(v * 1000) / 1000;
+      };
+
+      fnDisplay.textContent =
+        `f(x) = (${format(a)} x + ${format(b)}) / (${format(c)} x + ${format(d)})`;
+
+      warningDisplay.textContent = '';
+      if (Math.abs(a * d - b * c) < 1e-10) {
+        warningDisplay.textContent = '주의: ad - bc = 0 에 가까워, 특이한 형태의 유리함수일 수 있습니다.';
+      }
+
+      if (!fixedResult) {
+        fixedDisplay.textContent = '';
+        return;
+      }
+
+      if (fixedResult.type === 'all') {
+        fixedDisplay.textContent = '모든 x (f(x) = x)';
+      } else if (fixedResult.type === 'none') {
+        fixedDisplay.textContent = fixedResult.message || '실수 고정점 없음';
+      } else {
+        if (fixedResult.points.length === 0) {
+          fixedDisplay.textContent = '없음';
+        } else {
+          fixedDisplay.textContent =
+            fixedResult.points.map((x, idx) => `x${idx + 1} ≈ ${format(x)}`).join(', ');
+        }
+      }
+    }
+
+    function redrawAll(extraDrawer, fixedResultOpt) {
+      const { a, b, c, d } = getCoeffs();
+      const fixedResult = fixedResultOpt || computeFixedPoints(a, b, c, d);
+
+      drawGrid();
+      drawDiagonal();
+      drawFunction(a, b, c, d);
+      drawFixedPoints(fixedResult);
+      updateInfoPanel(fixedResult);
+
+      if (typeof extraDrawer === 'function') {
+        extraDrawer();
+      }
+    }
+
+    // ===== 애니메이션 루프 (requestAnimationFrame) =====
+    function stopIteration() {
+      iterAnimating = false;
+      stopIterBtn.disabled = true;
+      startIterBtn.disabled = false;
+    }
+
+    function animationLoop(timestamp) {
+      if (!iterAnimating) return;
+
+      if (animationStartTime === null) {
+        animationStartTime = timestamp;
+        lastFrameTime = timestamp;
+      }
+      const dtSeconds = (timestamp - lastFrameTime) / 1000;
+      lastFrameTime = timestamp;
+
+      const elapsedMs = timestamp - animationStartTime;
+      let idx = Math.floor(elapsedMs / currentSpeedMs);
+
+      if (idx >= currentCobwebSteps.length) idx = currentCobwebSteps.length - 1;
+      if (idx < 0) idx = 0;
+
+      const step = currentCobwebSteps[idx];
+
+      // 범위 자동 조정 (연속 줌)
+      autoRangeForIteration(currentCobwebSteps, idx, currentFixedResult, dtSeconds);
+
+      redrawAll(() => {
+        drawStartPoint(currentX0);
+        drawCobweb(currentCobwebSteps, idx);
+      }, currentFixedResult);
+
+      if (!step) {
+        iterStatus.textContent += '\n(완료)';
+        stopIteration();
+        return;
+      }
+
+      if (step.type === 'break') {
+        iterStatus.textContent =
+          '반복 중단: ' + (step.reason || '정의되지 않는 값 또는 발산');
+        stopIteration();
+        return;
+      }
+
+      if (idx >= currentCobwebSteps.length - 1) {
+        iterStatus.textContent += '\n최대 반복 단계까지 표시했습니다.';
+        stopIteration();
+        return;
+      }
+
+      requestAnimationFrame(animationLoop);
+    }
+
+    // ===== 이벤트 =====
+    plotBtn.addEventListener('click', () => {
+      stopIteration();
+      setDefaultRange();
+      redrawAll();
+      iterStatus.textContent = '그래프를 새로 그렸습니다. (기본 범위 -5 ~ 5)';
+    });
+
+    resetBtn.addEventListener('click', () => {
+      aInput.value = '1';
+      bInput.value = '0';
+      cInput.value = '0';
+      dInput.value = '1';
+      stopIteration();
+      setDefaultRange();
+      redrawAll();
+      iterStatus.textContent = '계수를 초기값으로 되돌렸습니다.';
+    });
+
+    markBtn.addEventListener('click', () => {
+      stopIteration();
+      const x0 = parseFloat(x0Input.value || '0');
+      const { a, b, c, d } = getCoeffs();
+      const fixedResult = computeFixedPoints(a, b, c, d);
+
+      autoRangeForSinglePointAndFixed(x0, fixedResult);
+      redrawAll(() => {
+        drawStartPoint(x0);
+      }, fixedResult);
+
+      iterStatus.textContent = `x₀ = ${x0} 위치를 표시하고, 해당 주변으로 맞췄습니다.`;
+    });
+
+    startIterBtn.addEventListener('click', () => {
+      stopIteration();
+
+      const { a, b, c, d } = getCoeffs();
+      const x0 = parseFloat(x0Input.value || '0');
+      const maxIter = Math.max(1, Math.min(200, parseInt(maxIterInput.value || '30', 10)));
+      const speed = Math.max(50, parseInt(speedInput.value || '300', 10));
+      const fixedResult = computeFixedPoints(a, b, c, d);
+
+      currentCobwebSteps = buildCobwebSteps(a, b, c, d, x0, maxIter);
+      currentFixedResult = fixedResult;
+      currentX0 = x0;
+      currentSpeedMs = speed;
+
+      // 처음엔 현재 범위(기본 -5~5)에서 시작해서,
+      // 첫 프레임부터 서서히 목표 범위로 움직이도록 함 (autoRange에서 부드럽게 이동)
+      animationStartTime = null;
+      lastFrameTime = null;
+      iterAnimating = true;
+
+      startIterBtn.disabled = true;
+      stopIterBtn.disabled = false;
+      iterStatus.textContent = '연속합성(코브웹) 궤적을 그리는 중입니다...';
+
+      requestAnimationFrame(animationLoop);
+    });
+
+    stopIterBtn.addEventListener('click', () => {
+      stopIteration();
+      iterStatus.textContent += '\n사용자에 의해 애니메이션이 중지되었습니다.';
+    });
+
+    // 초기 렌더
+    setDefaultRange();
+    redrawAll();
+  </script>
+</body>
+</html>
