@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>유리함수 고정점 시각화</title>
+  <title>유리함수 고정점 & 연속합성 시각화 (수렴 고정점 기준 확대)</title>
   <style>
     :root {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -135,7 +135,6 @@
       min-height: 2.3em;
       white-space: pre-line;
     }
-
     .canvas-wrapper {
       flex: 1 1 auto;
       background: #020617;
@@ -175,7 +174,7 @@
     }
     .diag { background: #22c55e; }
     .func { background: #3b82f6; }
-    .cob { background: #f97316; }
+    .cob  { background: #f97316; }
     .fixed-dot {
       width: 10px;
       height: 10px;
@@ -201,10 +200,11 @@
 <body>
   <div class="container">
     <div class="panel">
-      <h1>유리함수 고정점 시각화</h1>
+      <h1>유리함수 고정점 시각화 (수렴 고정점 기준 확대)</h1>
       <div class="sub">
         f(x) = (a x + b) / (c x + d) 계수를 넣고<br/>
         y = x, y = f(x), 고정점과 반복합성 궤적을 시각화합니다.<br/>
+        고정점이 두 개이면, 수렴하는 고정점만 기준으로 확대합니다.
       </div>
 
       <h2 style="font-size:0.95rem;margin:0 0 6px;">1. 계수 입력</h2>
@@ -245,15 +245,16 @@
           <label>x₀ (시작값)
             <input id="x0" type="number" value="0.5" step="0.1" />
           </label>
-          <label>반복 횟수
+          <label>최대 반복 횟수
             <input id="maxIter" type="number" value="30" min="1" max="200" />
           </label>
-          <label>애니메이션 속도(ms)
+          <label>애니메이션 속도(ms, 한 단계당)
             <input id="speed" type="number" value="300" min="50" />
           </label>
           <label>
             <span style="font-size:0.75rem;color:#6b7280;">
-             </span>
+              ※ 전체 궤적을 한 번 보고, 수렴하는 고정점 주변으로 부드럽게 확대합니다.
+            </span>
           </label>
         </div>
         <div class="btn-row">
@@ -278,7 +279,7 @@
           <span class="fixed-dot"></span> 고정점
         </span>
         <span class="legend-item">
-          <span class="legend-color cob"></span> 반복 궤적
+          <span class="legend-color cob"></span> 반복 궤적(코브웹)
         </span>
       </div>
     </div>
@@ -300,7 +301,7 @@
       Y_MAX = DEFAULT_RANGE.yMax;
     }
 
-    // DOM
+    // DOM 요소
     const aInput = document.getElementById('coef-a');
     const bInput = document.getElementById('coef-b');
     const cInput = document.getElementById('coef-c');
@@ -328,7 +329,10 @@
     let currentX0 = 0;
     let currentSpeedMs = 300;
     let animationStartTime = null;
-    let lastFrameTime = null;
+
+    let globalRange = null;
+    let finalRange = null;
+    let totalDurationMs = 0;
 
     // ===== 유틸 =====
     function getCoeffs() {
@@ -352,7 +356,7 @@
       return (a * x + b) / denom;
     }
 
-    // ===== 고정점 =====
+    // ===== 고정점 계산 =====
     function computeFixedPoints(a, b, c, d) {
       const eps = 1e-10;
       const result = { type: 'finite', points: [], message: '' };
@@ -403,8 +407,66 @@
       }
     }
 
-    // ===== 범위 자동 조정 (연속 줌) =====
-    function updateRangeFromPoints(points, dtSeconds) {
+    // ===== 고정점 안정성 분석 (수렴/발산 판정) =====
+    function analyzeFixedPointStabilities(a, b, c, d, fixedResult) {
+      const eps = 1e-10;
+      const res = [];
+      if (!fixedResult || fixedResult.type !== 'finite') return res;
+
+      const ad_minus_bc = a * d - b * c;
+
+      for (const x of fixedResult.points) {
+        const denom = c * x + d;
+        let kind = 'undefined';
+        let multiplier = Infinity;
+
+        if (Math.abs(denom) < eps) {
+          kind = 'undefined';
+          multiplier = Infinity;
+        } else {
+          multiplier = Math.abs(ad_minus_bc / (denom * denom)); // |f'(x*)|
+          if (multiplier < 1 - 1e-6) kind = 'attracting';
+          else if (multiplier > 1 + 1e-6) kind = 'repelling';
+          else kind = 'neutral';
+        }
+        res.push({ x, multiplier, kind });
+      }
+      return res;
+    }
+
+    // 현재 궤도가 실제로 수렴하고 있는 고정점 선택
+    function chooseTargetFixedPoint(stabilities, steps) {
+      if (!stabilities || stabilities.length === 0) return null;
+
+      const attracting = stabilities.filter(s => s.kind === 'attracting');
+      if (attracting.length === 0) return null; // 수렴 고정점 없음 → 기본 로직 사용
+
+      const segOnly = steps.filter(s => s.type === 'segment');
+      if (segOnly.length > 0) {
+        const lastSeg = segOnly[segOnly.length - 1];
+        const lastX = lastSeg.to.x;
+        let best = attracting[0];
+        let bestDist = Math.abs(lastX - best.x);
+        for (let i = 1; i < attracting.length; i++) {
+          const dist = Math.abs(lastX - attracting[i].x);
+          if (dist < bestDist) {
+            best = attracting[i];
+            bestDist = dist;
+          }
+        }
+        return best.x;
+      }
+
+      // 궤도가 없으면, 가장 강하게 수렴하는 고정점(멀티플라이어 가장 작은 것)
+      let best = attracting[0];
+      for (let i = 1; i < attracting.length; i++) {
+        if (attracting[i].multiplier < best.multiplier) best = attracting[i];
+      }
+      return best.x;
+    }
+
+    // ===== 범위 계산 =====
+    function computeRangeFromPoints(points) {
       let xmin = Infinity, xmax = -Infinity;
       let ymin = Infinity, ymax = -Infinity;
 
@@ -419,13 +481,7 @@
       }
 
       if (xmin === Infinity) {
-        // 포인트가 없으면 기본 범위
-        if (!dtSeconds || dtSeconds <= 0) {
-          setDefaultRange();
-        } else {
-          setDefaultRange();
-        }
-        return;
+        return { ...DEFAULT_RANGE };
       }
 
       let width = xmax - xmin;
@@ -445,75 +501,35 @@
       const marginX = width * 0.2;
       const marginY = height * 0.2;
 
-      let targetXMin = xmin - marginX;
-      let targetXMax = xmax + marginX;
-      let targetYMin = ymin - marginY;
-      let targetYMax = ymax + marginY;
+      let xMin = xmin - marginX;
+      let xMax = xmax + marginX;
+      let yMin = ymin - marginY;
+      let yMax = ymax + marginY;
 
       const LIMIT = 1e6;
-      targetXMin = Math.max(targetXMin, -LIMIT);
-      targetXMax = Math.min(targetXMax, LIMIT);
-      targetYMin = Math.max(targetYMin, -LIMIT);
-      targetYMax = Math.min(targetYMax, LIMIT);
+      xMin = Math.max(xMin, -LIMIT);
+      xMax = Math.min(xMax, LIMIT);
+      yMin = Math.max(yMin, -LIMIT);
+      yMax = Math.min(yMax, LIMIT);
 
-      // dtSeconds가 없거나 처음이면 바로 맞춤
-      if (!dtSeconds || dtSeconds <= 0 ||
-          !isFinite(X_MIN) || !isFinite(X_MAX) ||
-          !isFinite(Y_MIN) || !isFinite(Y_MAX)) {
-        X_MIN = targetXMin;
-        X_MAX = targetXMax;
-        Y_MIN = targetYMin;
-        Y_MAX = targetYMax;
-        return;
-      }
-
-      // 부드러운 보간 (연속 줌)
-      const T = 0.7; // 카메라가 목표 범위로 수렴하는 시간 상수(초 단위)
-      const alpha = 1 - Math.exp(-dtSeconds / T); // 0 ~ 1
-
-      const lerp = (oldVal, newVal) => oldVal + alpha * (newVal - oldVal);
-
-      X_MIN = lerp(X_MIN, targetXMin);
-      X_MAX = lerp(X_MAX, targetXMax);
-      Y_MIN = lerp(Y_MIN, targetYMin);
-      Y_MAX = lerp(Y_MAX, targetYMax);
+      return { xMin, xMax, yMin, yMax };
     }
 
-    function autoRangeForIteration(steps, idx, fixedResult, dtSeconds) {
-      const pts = [];
-      const lastIndex = Math.min(idx, steps.length - 1);
-
-      const maxIter = Math.max(1, parseInt(maxIterInput.value || '30', 10));
-      const windowSize = Math.max(6, Math.floor(maxIter / 3));
-      const firstIndex = Math.max(0, lastIndex - windowSize);
-
-      for (let i = firstIndex; i <= lastIndex; i++) {
-        const s = steps[i];
-        if (!s || s.type !== 'segment') continue;
-        pts.push(s.from, s.to);
-      }
-
-      if (fixedResult && fixedResult.type === 'finite') {
-        for (const fp of fixedResult.points) {
-          pts.push({ x: fp, y: fp });
-        }
-      }
-
-      updateRangeFromPoints(pts, dtSeconds);
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
     }
 
-    function autoRangeForSinglePointAndFixed(x0, fixedResult) {
-      const pts = [];
-      if (isFinite(x0)) pts.push({ x: x0, y: x0 });
-      if (fixedResult && fixedResult.type === 'finite') {
-        for (const fp of fixedResult.points) {
-          pts.push({ x: fp, y: fp });
-        }
-      }
-      updateRangeFromPoints(pts, 0); // 즉시 맞추기
+    function lerpRange(r0, r1, t) {
+      t = Math.max(0, Math.min(1, t));
+      return {
+        xMin: lerp(r0.xMin, r1.xMin, t),
+        xMax: lerp(r0.xMax, r1.xMax, t),
+        yMin: lerp(r0.yMin, r1.yMin, t),
+        yMax: lerp(r0.yMax, r1.yMax, t),
+      };
     }
 
-    // ===== 그리기 함수들 =====
+    // ===== 그리기 함수 =====
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#020617';
@@ -736,7 +752,7 @@
       }
     }
 
-    // ===== 애니메이션 루프 (requestAnimationFrame) =====
+    // ===== 애니메이션 제어 =====
     function stopIteration() {
       iterAnimating = false;
       stopIterBtn.disabled = true;
@@ -748,42 +764,35 @@
 
       if (animationStartTime === null) {
         animationStartTime = timestamp;
-        lastFrameTime = timestamp;
       }
-      const dtSeconds = (timestamp - lastFrameTime) / 1000;
-      lastFrameTime = timestamp;
+      const elapsed = timestamp - animationStartTime;
 
-      const elapsedMs = timestamp - animationStartTime;
-      let idx = Math.floor(elapsedMs / currentSpeedMs);
-
+      let idx = Math.floor(elapsed / currentSpeedMs);
       if (idx >= currentCobwebSteps.length) idx = currentCobwebSteps.length - 1;
       if (idx < 0) idx = 0;
 
       const step = currentCobwebSteps[idx];
 
-      // 범위 자동 조정 (연속 줌)
-      autoRangeForIteration(currentCobwebSteps, idx, currentFixedResult, dtSeconds);
+      const phaseLinear = totalDurationMs > 0 ? Math.min(1, elapsed / totalDurationMs) : 1;
+      const tEase = 1 - Math.pow(1 - phaseLinear, 3); // ease-out
+      const currentRange = lerpRange(globalRange, finalRange, tEase);
+      X_MIN = currentRange.xMin;
+      X_MAX = currentRange.xMax;
+      Y_MIN = currentRange.yMin;
+      Y_MAX = currentRange.yMax;
 
       redrawAll(() => {
         drawStartPoint(currentX0);
         drawCobweb(currentCobwebSteps, idx);
       }, currentFixedResult);
 
-      if (!step) {
-        iterStatus.textContent += '\n(완료)';
-        stopIteration();
-        return;
-      }
-
-      if (step.type === 'break') {
-        iterStatus.textContent =
-          '반복 중단: ' + (step.reason || '정의되지 않는 값 또는 발산');
-        stopIteration();
-        return;
-      }
-
-      if (idx >= currentCobwebSteps.length - 1) {
-        iterStatus.textContent += '\n최대 반복 단계까지 표시했습니다.';
+      if (!step || step.type === 'break' || elapsed >= totalDurationMs || idx >= currentCobwebSteps.length - 1) {
+        if (step && step.type === 'break') {
+          iterStatus.textContent =
+            '반복 중단: ' + (step.reason || '정의되지 않는 값 또는 발산');
+        } else {
+          iterStatus.textContent += '\n애니메이션을 마쳤습니다.';
+        }
         stopIteration();
         return;
       }
@@ -816,12 +825,23 @@
       const { a, b, c, d } = getCoeffs();
       const fixedResult = computeFixedPoints(a, b, c, d);
 
-      autoRangeForSinglePointAndFixed(x0, fixedResult);
+      const pts = [{ x: x0, y: x0 }];
+      if (fixedResult && fixedResult.type === 'finite') {
+        for (const fp of fixedResult.points) {
+          pts.push({ x: fp, y: fp });
+        }
+      }
+      const r = computeRangeFromPoints(pts);
+      X_MIN = r.xMin;
+      X_MAX = r.xMax;
+      Y_MIN = r.yMin;
+      Y_MAX = r.yMax;
+
       redrawAll(() => {
         drawStartPoint(x0);
       }, fixedResult);
 
-      iterStatus.textContent = `x₀ = ${x0} 위치를 표시하고, 해당 주변으로 맞췄습니다.`;
+      iterStatus.textContent = `x₀ = ${x0} 위치와 고정점을 중심으로 보이도록 맞췄습니다.`;
     });
 
     startIterBtn.addEventListener('click', () => {
@@ -832,21 +852,71 @@
       const maxIter = Math.max(1, Math.min(200, parseInt(maxIterInput.value || '30', 10)));
       const speed = Math.max(50, parseInt(speedInput.value || '300', 10));
       const fixedResult = computeFixedPoints(a, b, c, d);
+      const stabilities = analyzeFixedPointStabilities(a, b, c, d, fixedResult);
 
-      currentCobwebSteps = buildCobwebSteps(a, b, c, d, x0, maxIter);
+      const steps = buildCobwebSteps(a, b, c, d, x0, maxIter);
+      currentCobwebSteps = steps;
       currentFixedResult = fixedResult;
       currentX0 = x0;
       currentSpeedMs = speed;
 
-      // 처음엔 현재 범위(기본 -5~5)에서 시작해서,
-      // 첫 프레임부터 서서히 목표 범위로 움직이도록 함 (autoRange에서 부드럽게 이동)
-      animationStartTime = null;
-      lastFrameTime = null;
+      // 전체 궤적 + (모든) 고정점 기준 globalRange
+      const allPts = [{ x: x0, y: x0 }];
+      for (const s of steps) {
+        if (s.type !== 'segment') continue;
+        allPts.push(s.from, s.to);
+      }
+      if (fixedResult && fixedResult.type === 'finite') {
+        for (const fp of fixedResult.points) {
+          allPts.push({ x: fp, y: fp });
+        }
+      }
+      globalRange = computeRangeFromPoints(allPts);
+
+      // 마지막 부분 + "수렴하는 고정점" 기준 finalRange
+      const finalPts = [];
+      const segOnly = steps.filter(s => s.type === 'segment');
+      const windowSize = 10;
+      const startIdx = Math.max(0, segOnly.length - windowSize);
+      for (let i = startIdx; i < segOnly.length; i++) {
+        const seg = segOnly[i];
+        finalPts.push(seg.from, seg.to);
+      }
+
+      // 여기서 수렴하는 고정점만 확대 타깃으로 사용
+      const targetFixedX = chooseTargetFixedPoint(stabilities, steps);
+      if (targetFixedX !== null) {
+        finalPts.push({ x: targetFixedX, y: targetFixedX });
+      } else if (fixedResult && fixedResult.type === 'finite') {
+        // 수렴 고정점이 없으면 이전처럼 모든 고정점을 포함
+        for (const fp of fixedResult.points) {
+          finalPts.push({ x: fp, y: fp });
+        }
+      }
+
+      finalRange = computeRangeFromPoints(finalPts);
+
+      // 처음 축소는 바로 globalRange로 점프
+      X_MIN = globalRange.xMin;
+      X_MAX = globalRange.xMax;
+      Y_MIN = globalRange.yMin;
+      Y_MAX = globalRange.yMax;
+
+      redrawAll(() => {
+        drawStartPoint(x0);
+      }, fixedResult);
+
+      // 확대 시간: 일단 기본적으로 전체 코브웹 시간과 비슷하게
+      const baseDuration = steps.length * speed;
+      totalDurationMs = Math.max(baseDuration, speed * 4);
+
       iterAnimating = true;
+      animationStartTime = null;
 
       startIterBtn.disabled = true;
       stopIterBtn.disabled = false;
-      iterStatus.textContent = '연속합성(코브웹) 궤적을 그리는 중입니다...';
+      iterStatus.textContent =
+        '전체 궤적을 한 번 보고, 수렴하는 고정점 기준으로 부드럽게 확대 중입니다...';
 
       requestAnimationFrame(animationLoop);
     });
